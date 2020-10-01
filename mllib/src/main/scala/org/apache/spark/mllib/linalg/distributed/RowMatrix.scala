@@ -790,23 +790,27 @@ class RowMatrix @Since("1.0.0") (
     require(aggregatedObjectSizeInBytes > 0,
       "Cannot compute aggregate depth heuristic based on a zero-size object to aggregate")
 
+    // Can be 0 if unlimited
     val maxDriverResultSizeInBytes = rows.conf.get[Long](MAX_RESULT_SIZE)
+    if (maxDriverResultSizeInBytes > 0) {
+      require(maxDriverResultSizeInBytes > aggregatedObjectSizeInBytes,
+        s"Cannot aggregate object of size $aggregatedObjectSizeInBytes Bytes, "
+          + s"as it's bigger than maxResultSize ($maxDriverResultSizeInBytes Bytes)")
 
-    require(maxDriverResultSizeInBytes > aggregatedObjectSizeInBytes,
-      s"Cannot aggregate object of size $aggregatedObjectSizeInBytes Bytes, "
-        + s"as it's bigger than maxResultSize ($maxDriverResultSizeInBytes Bytes)")
+      val numerator = math.log(rows.getNumPartitions)
+      val denominator = math.log(maxDriverResultSizeInBytes) - math.log(aggregatedObjectSizeInBytes)
+      val desiredTreeDepth = math.ceil(numerator / denominator)
 
-    val numerator = math.log(rows.getNumPartitions)
-    val denominator = math.log(maxDriverResultSizeInBytes) - math.log(aggregatedObjectSizeInBytes)
-    val desiredTreeDepth = math.ceil(numerator / denominator)
+      if (desiredTreeDepth > 4) {
+        logWarning(
+          s"Desired tree depth for treeAggregation is big ($desiredTreeDepth)."
+            + "Consider increasing driver max result size or reducing number of partitions")
+      }
 
-    if (desiredTreeDepth > 4) {
-      logWarning(
-        s"Desired tree depth for treeAggregation is big ($desiredTreeDepth)."
-          + "Consider increasing driver max result size or reducing number of partitions")
+      math.min(math.max(1, desiredTreeDepth), 10).toInt
+    } else {
+      2 // Default treeAggregate depth
     }
-
-    math.min(math.max(1, desiredTreeDepth), 10).toInt
   }
 }
 

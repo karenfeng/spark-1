@@ -121,6 +121,20 @@ class RowMatrixSuite extends SparkFunSuite with MLlibTestSparkContext {
     assert(objectBiggerThanResultSize.getMessage.contains("it's bigger than maxResultSize"))
   }
 
+  test("SPARK-33043: getTreeAggregateIdealDepth works if spark.driver.maxResultSize=0") {
+    val oldMaxResultSize = spark.conf.get("spark.driver.maxResultSize")
+    spark.conf.set("spark.driver.maxResultSize", "0")
+
+    val vectors = spark.sparkContext.emptyRDD[Vector].repartition(100)
+    val rowMat = new RowMatrix(vectors)
+    assert(rowMat.getTreeAggregateIdealDepth(100 * 1024 * 1024) === 2)
+    assert(rowMat.getTreeAggregateIdealDepth(110 * 1024 * 1024) === 2)
+    assert(rowMat.getTreeAggregateIdealDepth(700 * 1024 * 1024) === 2)
+    assert(rowMat.getTreeAggregateIdealDepth(1100 * 1024 * 1024) === 2)
+
+    spark.conf.set("spark.driver.maxResultSize", oldMaxResultSize)
+  }
+
   test("similar columns") {
     val colMags = Vectors.dense(math.sqrt(126), math.sqrt(66), math.sqrt(94))
     val expected = BDM(
