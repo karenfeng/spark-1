@@ -195,17 +195,17 @@ package object util extends Logging {
   }
 
   val METADATA_COL_ATTR_KEY = "__metadata_col"
-  implicit class MetadataColumnHelper(attr: Attribute) {
-    def isMetadataCol: Boolean = attr.metadata.contains(METADATA_COL_ATTR_KEY) &&
-      attr.metadata.getBoolean(METADATA_COL_ATTR_KEY)
-  }
 
   /**
    * Hidden columns are a type of metadata column that are not propagated through subquery aliases,
    * and are candidates during qualified star expansions.
    */
   val HIDDEN_COL_ATTR_KEY = "__hidden_col"
-  implicit class HiddenColumnHelper(attr: Attribute) {
+
+  implicit class SpecialColumnHelper(attr: Attribute) {
+    def isMetadataCol: Boolean = attr.metadata.contains(METADATA_COL_ATTR_KEY) &&
+      attr.metadata.getBoolean(METADATA_COL_ATTR_KEY)
+
     def isHiddenCol: Boolean = attr.isMetadataCol &&
       attr.metadata.contains(HIDDEN_COL_ATTR_KEY) &&
       attr.metadata.getBoolean(HIDDEN_COL_ATTR_KEY)
