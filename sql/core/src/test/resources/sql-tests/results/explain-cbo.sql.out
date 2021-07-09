@@ -73,7 +73,7 @@ AdaptiveSparkPlan isFinalPlan=false
       :           +- HashAggregate(keys=[], functions=[partial_max(csales#xL)], output=[max#xL])
       :              +- HashAggregate(keys=[], functions=[sum(b#x)], output=[csales#xL])
       :                 +- Exchange SinglePartition, ENSURE_REQUIREMENTS, [id=#x]
-      :                    +- HashAggregate(keys=[], functions=[partial_sum(b#x)], output=[sum#xL])
+      :                    +- HashAggregate(keys=[], functions=[partial_sum(b#x)], output=[sum#xL, isEmpty#x])
       :                       +- Project [b#x]
       :                          +- Filter (isnotnull(a#x) AND (a#x < 100))
       :                             +- FileScan parquet default.explain_temp1[a#x,b#x] Batched: true, DataFilters: [isnotnull(a#x), (a#x < 100)], Format: Parquet, Location [not included in comparison]/{warehouse_dir}/explain_temp1], PartitionFilters: [], PushedFilters: [IsNotNull(a), LessThan(a,100)], ReadSchema: struct<a:int,b:int>

@@ -74,48 +74,17 @@ case class Sum(
 
   private lazy val isEmpty = AttributeReference("isEmpty", BooleanType, nullable = false)()
 
-  private lazy val zero = Literal.default(resultType)
+  override lazy val aggBufferAttributes = sum :: isEmpty :: Nil
 
-  override lazy val aggBufferAttributes = resultType match {
-    case _: DecimalType => sum :: isEmpty :: Nil
-    case _ => sum :: Nil
-  }
+  override lazy val initialValues: Seq[Expression] = Seq(
+    /* sum = */ Literal.default(resultType),
+    /* isEmpty = */ Literal(true)
+  )
 
-  override lazy val initialValues: Seq[Expression] = resultType match {
-    case _: DecimalType => Seq(zero, Literal(true, BooleanType))
-    case _ => Seq(Literal(null, resultType))
-  }
-
-  override lazy val updateExpressions: Seq[Expression] = {
-    resultType match {
-      case _: DecimalType =>
-        // For decimal type, the initial value of `sum` is 0. We need to keep `sum` unchanged if
-        // the input is null, as SUM function ignores null input. The `sum` can only be null if
-        // overflow happens under non-ansi mode.
-        val sumExpr = if (child.nullable) {
-          If(child.isNull, sum, sum + KnownNotNull(child).cast(resultType))
-        } else {
-          sum + child.cast(resultType)
-        }
-        // The buffer becomes non-empty after seeing the first not-null input.
-        val isEmptyExpr = if (child.nullable) {
-          isEmpty && child.isNull
-        } else {
-          Literal(false, BooleanType)
-        }
-        Seq(sumExpr, isEmptyExpr)
-      case _ =>
-        // For non-decimal type, the initial value of `sum` is null, which indicates no value.
-        // We need `coalesce(sum, zero)` to start summing values. And we need an outer `coalesce`
-        // in case the input is nullable. The `sum` can only be null if there is no value, as
-        // non-decimal type can produce overflowed value under non-ansi mode.
-        if (child.nullable) {
-          Seq(coalesce(coalesce(sum, zero) + child.cast(resultType), sum))
-        } else {
-          Seq(coalesce(sum, zero) + child.cast(resultType))
-        }
-    }
-  }
+  override lazy val updateExpressions: Seq[Expression] = Seq(
+    /* sum = */ sum + coalesce(child.cast(resultType), Literal.default(resultType)),
+    /* isEmpty = */ If(child.isNull, isEmpty, Literal(false))
+  )
 
   /**
    * For decimal type:
@@ -129,23 +98,10 @@ case class Sum(
    * isEmpty:  Set to false if either one of the left or right is set to false. This
    * means we have seen atleast a value that was not null.
    */
-  override lazy val mergeExpressions: Seq[Expression] = {
-    resultType match {
-      case _: DecimalType =>
-        val bufferOverflow = !isEmpty.left && sum.left.isNull
-        val inputOverflow = !isEmpty.right && sum.right.isNull
-        Seq(
-          If(
-            bufferOverflow || inputOverflow,
-            Literal.create(null, resultType),
-            // If both the buffer and the input do not overflow, just add them, as they can't be
-            // null. See the comments inside `updateExpressions`: `sum` can only be null if
-            // overflow happens.
-            KnownNotNull(sum.left) + KnownNotNull(sum.right)),
-          isEmpty.left && isEmpty.right)
-      case _ => Seq(coalesce(coalesce(sum.left, zero) + sum.right, sum.left))
-    }
-  }
+  override lazy val mergeExpressions: Seq[Expression] = Seq(
+    /* sum = */ sum.left + sum.right,
+    /* isEmpty = */ isEmpty.left && isEmpty.right
+  )
 
   /**
    * If the isEmpty is true, then it means there were no values to begin with or all the values
@@ -158,7 +114,7 @@ case class Sum(
     case d: DecimalType =>
       If(isEmpty, Literal.create(null, resultType),
         CheckOverflowInSum(sum, d, !failOnError))
-    case _ => sum
+    case _ => If(isEmpty, Literal.create(null, resultType), sum)
   }
 
   override protected def withNewChildInternal(newChild: Expression): Sum = copy(child = newChild)
